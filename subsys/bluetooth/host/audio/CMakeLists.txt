@@ -26,6 +26,7 @@ zephyr_library_sources_ifdef(CONFIG_BT_MCS media_proxy.c)
 zephyr_library_sources_ifdef(CONFIG_BT_MCS mpl.c)
 zephyr_library_sources_ifdef(CONFIG_BT_MCC mcc.c)
 zephyr_library_sources_ifdef(CONFIG_BT_OTC otc.c)
+zephyr_library_sources_ifdef(CONFIG_BT_HAS has.c)
 
 if(CONFIG_BT_CSIS_TEST_SAMPLE_DATA)
   message(WARNING "CONFIG_BT_CSIS_TEST_SAMPLE_DATA is enabled.
