@@ -32,37 +32,6 @@ static sys_slist_t srcs;
 IF_ENABLED(CONFIG_BT_PAC_SNK, (static enum bt_audio_context sink_available_contexts;))
 IF_ENABLED(CONFIG_BT_PAC_SRC, (static enum bt_audio_context source_available_contexts;));
 
-static int publish_capability_cb(struct bt_conn *conn, uint8_t dir,
-				 uint8_t index, struct bt_codec *codec)
-{
-	struct bt_audio_capability *cap;
-	sys_slist_t *lst;
-	uint8_t i;
-
-	if (dir == BT_AUDIO_DIR_SINK) {
-		lst = &snks;
-	} else if (dir == BT_AUDIO_DIR_SOURCE) {
-		lst = &srcs;
-	} else {
-		BT_ERR("Invalid endpoint dir: %u", dir);
-		return -EINVAL;
-	}
-
-	i = 0;
-	SYS_SLIST_FOR_EACH_CONTAINER(lst, cap, _node) {
-		if (i != index) {
-			i++;
-			continue;
-		}
-
-		(void)memcpy(codec, cap->codec, sizeof(*codec));
-
-		return 0;
-	}
-
-	return -ENOENT;
-}
-
 #if defined(CONFIG_BT_PAC_SNK_LOC) || defined(CONFIG_BT_PAC_SRC_LOC)
 
 #if defined(CONFIG_BT_PAC_SNK_LOC)
@@ -112,7 +81,6 @@ static int get_available_contexts_cb(struct bt_conn *conn, enum bt_audio_dir dir
 }
 
 static struct bt_audio_pacs_cb pacs_cb = {
-	.publish_capability = publish_capability_cb,
 	.get_available_contexts = get_available_contexts_cb,
 #if defined(CONFIG_BT_PAC_SNK_LOC) || defined(CONFIG_BT_PAC_SRC_LOC)
 	.publish_location = publish_location_cb,

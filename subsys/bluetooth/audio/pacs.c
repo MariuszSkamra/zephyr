@@ -38,11 +38,11 @@ NET_BUF_SIMPLE_DEFINE_STATIC(read_buf, CONFIG_BT_L2CAP_TX_MTU);
 static const struct bt_audio_pacs_cb *pacs_cb;
 
 static void pac_data_add(struct net_buf_simple *buf, uint8_t num,
-			 struct bt_codec_data *data)
+			 const struct bt_codec_data *data)
 {
 	for (uint8_t i = 0; i < num; i++) {
 		struct bt_pac_codec_capability *cc;
-		struct bt_data *d = &data[i].data;
+		const struct bt_data *d = &data[i].data;
 
 		cc = net_buf_simple_add(buf, sizeof(*cc));
 		cc->len = d->data_len + sizeof(cc->type);
@@ -54,62 +54,61 @@ static void pac_data_add(struct net_buf_simple *buf, uint8_t num,
 	}
 }
 
+struct build_pac_records_data {
+	struct net_buf_simple *buf;
+	uint8_t num_pac;
+};
+
+static bool build_pac_records(const struct bt_audio_capability *capability, void *user_data)
+{
+	struct build_pac_records_data *data = user_data;
+	const struct bt_codec *codec = capability->codec;
+	struct net_buf_simple *buf = data->buf;
+	struct bt_pac_meta *meta;
+	struct bt_pac *pac;
+
+	pac = net_buf_simple_add(data->buf, sizeof(*pac));
+	pac->codec.id = codec->id;
+	pac->codec.cid = sys_cpu_to_le16(codec->cid);
+	pac->codec.vid = sys_cpu_to_le16(codec->vid);
+	pac->cc_len = buf->len;
+
+	BT_DBG("Parsing codec config data");
+	pac_data_add(buf, codec->data_count, codec->data);
+
+	/* Buffer size shall never be below PAC len since we are just append data.*/
+	__ASSERT_NO_MSG(data->buf->len >= pac->cc_len);
+
+	pac->cc_len = buf->len - pac->cc_len;
+
+	meta = net_buf_simple_add(buf, sizeof(*meta));
+	meta->len = buf->len;
+	BT_DBG("Parsing metadata");
+	pac_data_add(buf, codec->meta_count, codec->meta);
+	meta->len = buf->len - meta->len;
+
+	BT_DBG("pac #%u: codec capability len %u metadata len %u",
+		data->num_pac, pac->cc_len, meta->len);
+
+	data->num_pac++;
+
+	return true;
+}
+
 static void get_pac_records(struct bt_conn *conn, enum bt_audio_dir dir,
 			    struct net_buf_simple *buf)
 {
+	struct build_pac_records_data data;
 	struct bt_pacs_read_rsp *rsp;
 
 	/* Reset if buffer before using */
 	net_buf_simple_reset(buf);
 
 	rsp = net_buf_simple_add(buf, sizeof(*rsp));
-	rsp->num_pac = 0;
 
-	if (pacs_cb == NULL ||
-	    pacs_cb->publish_capability == NULL) {
-		return;
-	}
+	bt_audio_foreach_capability(dir, build_pac_records, &data);
 
-	while (true) {
-		struct bt_pac_meta *meta;
-		struct bt_codec codec;
-		struct bt_pac *pac;
-		int err;
-
-		err = pacs_cb->publish_capability(conn, dir, rsp->num_pac,
-						  &codec);
-		if (err != 0) {
-			break;
-		}
-
-		pac = net_buf_simple_add(buf, sizeof(*pac));
-
-		pac->codec.id = codec.id;
-		pac->codec.cid = sys_cpu_to_le16(codec.cid);
-		pac->codec.vid = sys_cpu_to_le16(codec.vid);
-		pac->cc_len = buf->len;
-
-		BT_DBG("Parsing codec config data");
-		pac_data_add(buf, codec.data_count, codec.data);
-
-		/* Buffer size shall never be below PAC len since we are just
-		 * append data.
-		 */
-		__ASSERT_NO_MSG(buf->len >= pac->cc_len);
-
-		pac->cc_len = buf->len - pac->cc_len;
-
-		meta = net_buf_simple_add(buf, sizeof(*meta));
-		meta->len = buf->len;
-		BT_DBG("Parsing metadata");
-		pac_data_add(buf, codec.meta_count, codec.meta);
-		meta->len = buf->len - meta->len;
-
-		BT_DBG("pac #%u: codec capability len %u metadata len %u",
-		       rsp->num_pac, pac->cc_len, meta->len);
-
-		rsp->num_pac++;
-	}
+	rsp->num_pac = data.num_pac;
 }
 
 static void available_context_cfg_changed(const struct bt_gatt_attr *attr, uint16_t value)

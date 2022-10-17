@@ -75,32 +75,6 @@ struct bt_audio_pacs_cb {
 	int (*get_available_contexts)(struct bt_conn *conn, enum bt_audio_dir dir,
 				      enum bt_audio_context *context);
 
-	/** @brief Publish Capability callback
-	 *
-	 *  Publish Capability callback is called whenever a remote client
-	 *  requests to read the Published Audio Capabilities (PAC) records.
-	 *  The callback will be called iteratively until it returns an error,
-	 *  increasing the @p index each time. Once an error value (non-zero)
-	 *  is returned, the previously returned @p codec values (if any) will
-	 *  be sent to the client that requested the value.
-	 *
-	 *  @param conn   The connection that requests the capabilities.
-	 *                Will be NULL if the capabilities is requested for
-	 *                sending a notification, as a result of calling
-	 *                bt_audio_capability_register() or
-	 *                bt_audio_capability_unregister().
-	 *  @param type   Type of the endpoint.
-	 *  @param index  Index of the codec object requested. Multiple objects
-	 *                may be returned, and this value keep tracks of how
-	 *                many have previously been returned.
-	 *  @param codec  Codec object that shall be populated if returning
-	 *                success (0). Ignored if returning non-zero.
-	 *
-	 *  @return 0 in case of success or negative value in case of error.
-	 */
-	int (*publish_capability)(struct bt_conn *conn, uint8_t type,
-				  uint8_t index, struct bt_codec *const codec);
-
 #if defined(CONFIG_BT_PAC_SNK_LOC) || defined(CONFIG_BT_PAC_SRC_LOC)
 	/** @brief Publish location callback
 	 *
