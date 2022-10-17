@@ -58,3 +58,6 @@ ssize_t bt_audio_ccc_cfg_write(struct bt_conn *conn, const struct bt_gatt_attr *
 	BT_GATT_CCC_MANAGED(((struct _bt_gatt_ccc[])					\
 		{BT_GATT_CCC_INITIALIZER(_changed, bt_audio_ccc_cfg_write, NULL)}),	\
 		(BT_GATT_PERM_READ | BT_GATT_PERM_WRITE_ENCRYPT))
+
+int bt_audio_metadata_pack(uint8_t *data, uint8_t data_max_len, const struct bt_data *meta,
+			   size_t meta_len, uint8_t *data_len);

@@ -21,9 +21,11 @@
 #include "../host/hci_core.h"
 #include "../host/conn_internal.h"
 
+#include "audio_internal.h"
 #include "endpoint.h"
 #include "pacs_internal.h"
 #include "unicast_client_internal.h"
+#include "zephyr/net/buf.h"
 
 #define BT_DBG_ENABLED IS_ENABLED(CONFIG_BT_AUDIO_DEBUG_UNICAST_CLIENT)
 #define LOG_MODULE_NAME bt_unicast_client
@@ -69,10 +71,6 @@ static struct bt_gatt_discover_params avail_ctx_cc_disc[CONFIG_BT_MAX_CONN];
 static const struct bt_audio_unicast_client_cb *unicast_client_cbs;
 
 /* TODO: Move the functions to avoid these prototypes */
-static int unicast_client_ep_set_metadata(struct bt_audio_ep *ep,
-					  struct net_buf_simple *buf,
-					  uint8_t len, struct bt_codec *codec);
-
 static int unicast_client_ep_set_codec(struct bt_audio_ep *ep, uint8_t id,
 				       uint16_t cid, uint16_t vid,
 				       struct net_buf_simple *buf,
@@ -1058,94 +1056,6 @@ fail:
 	return -EINVAL;
 }
 
-static bool unicast_client_codec_metadata_store(struct bt_data *data,
-						void *user_data)
-{
-	struct bt_codec *codec = user_data;
-	struct bt_codec_data *meta;
-
-	if (codec->meta_count >= ARRAY_SIZE(codec->meta)) {
-		BT_ERR("No slot available for Codec Config Metadata");
-		return false;
-	}
-
-	meta = &codec->meta[codec->meta_count];
-
-	if (data->data_len > sizeof(meta->value)) {
-		BT_ERR("Not enough space for Codec Config Metadata: %u > %zu",
-		       data->data_len, sizeof(meta->value));
-		return false;
-	}
-
-	BT_DBG("#%u type 0x%02x len %u", codec->meta_count, data->type,
-	       data->data_len);
-
-	meta->data.type = data->type;
-	meta->data.data_len = data->data_len;
-
-	/* Deep copy data contents */
-	meta->data.data = meta->value;
-	(void)memcpy(meta->value, data->data, data->data_len);
-
-	BT_HEXDUMP_DBG(meta->value, data->data_len, "data");
-
-	codec->meta_count++;
-
-	return true;
-}
-
-static int unicast_client_ep_set_metadata(struct bt_audio_ep *ep,
-					  struct net_buf_simple *buf,
-					  uint8_t len, struct bt_codec *codec)
-{
-	struct net_buf_simple meta;
-	int err;
-
-	if (!ep && !codec) {
-		return -EINVAL;
-	}
-
-	BT_DBG("ep %p len %u codec %p", ep, len, codec);
-
-	if (!codec) {
-		codec = &ep->codec;
-	}
-
-	/* Reset current metadata */
-	codec->meta_count = 0;
-	(void)memset(codec->meta, 0, sizeof(codec->meta));
-
-	if (!len) {
-		return 0;
-	}
-
-	net_buf_simple_init_with_data(&meta, net_buf_simple_pull_mem(buf, len),
-				      len);
-
-	/* Parse LTV entries */
-	bt_data_parse(&meta, unicast_client_codec_metadata_store, codec);
-
-	/* Check if all entries could be parsed */
-	if (meta.len) {
-		BT_ERR("Unable to parse Metadata: len %u", meta.len);
-		err = -EINVAL;
-
-		if (meta.len > 2) {
-			/* Value of the Metadata Type field in error */
-			err = meta.data[2];
-		}
-
-		goto fail;
-	}
-
-	return 0;
-
-fail:
-	codec->meta_count = 0;
-	(void)memset(codec->meta, 0, sizeof(codec->meta));
-	return err;
-}
-
 static uint8_t unicast_client_cp_notify(struct bt_conn *conn,
 					struct bt_gatt_subscribe_params *params,
 					const void *data, uint16_t length)
@@ -1391,12 +1301,13 @@ int bt_unicast_client_ep_qos(struct bt_audio_ep *ep, struct net_buf_simple *buf,
 
 static int unicast_client_ep_enable(struct bt_audio_ep *ep,
 				    struct net_buf_simple *buf,
-				    struct bt_codec_data *meta,
-				    size_t meta_count)
+				    const struct bt_data *metadata,
+				    size_t metadata_len)
 {
 	struct bt_ascs_metadata *req;
+	int err;
 
-	BT_DBG("ep %p buf %p metadata count %zu", ep, buf, meta_count);
+	BT_DBG("ep %p buf %p metadata count %zu", ep, buf, metadata_len);
 
 	if (!ep) {
 		return -EINVAL;
@@ -1413,21 +1324,28 @@ static int unicast_client_ep_enable(struct bt_audio_ep *ep,
 	req = net_buf_simple_add(buf, sizeof(*req));
 	req->ase = ep->status.id;
 
-	req->len = buf->len;
-	unicast_client_codec_data_add(buf, "meta", meta_count, meta);
-	req->len = buf->len - req->len;
+	err = bt_audio_metadata_pack(req->data, net_buf_simple_tailroom(buf),
+				     metadata, metadata_len, &req->len);
+	if (err < 0) {
+		BT_ERR("Failed to pack metadata %d", err);
+
+		return err;
+	}
+
+	net_buf_simple_add(buf, req->len);
 
 	return 0;
 }
 
 static int unicast_client_ep_metadata(struct bt_audio_ep *ep,
 				      struct net_buf_simple *buf,
-				      struct bt_codec_data *meta,
-				      size_t meta_count)
+				      const struct bt_data *metadata,
+				      size_t metadata_len)
 {
 	struct bt_ascs_metadata *req;
+	int err;
 
-	BT_DBG("ep %p buf %p metadata count %zu", ep, buf, meta_count);
+	BT_DBG("ep %p buf %p metadata count %zu", ep, buf, metadata_len);
 
 	if (!ep) {
 		return -EINVAL;
@@ -1450,9 +1368,15 @@ static int unicast_client_ep_metadata(struct bt_audio_ep *ep,
 	req = net_buf_simple_add(buf, sizeof(*req));
 	req->ase = ep->status.id;
 
-	req->len = buf->len;
-	unicast_client_codec_data_add(buf, "meta", meta_count, meta);
-	req->len = buf->len - req->len;
+	err = bt_audio_metadata_pack(req->data, net_buf_simple_tailroom(buf),
+				     metadata, metadata_len, &req->len);
+	if (err < 0) {
+		BT_ERR("Failed to pack metadata %d", err);
+
+		return err;
+	}
+
+	net_buf_simple_add(buf, req->len);
 
 	return 0;
 }
@@ -1671,9 +1595,8 @@ int bt_unicast_client_config(struct bt_audio_stream *stream,
 	return 0;
 }
 
-int bt_unicast_client_enable(struct bt_audio_stream *stream,
-			     struct bt_codec_data *meta,
-			     size_t meta_count)
+int bt_unicast_client_enable(struct bt_audio_stream *stream, const struct bt_data *metadata,
+			     size_t metadata_len)
 {
 	struct bt_audio_ep *ep = stream->ep;
 	struct net_buf_simple *buf;
@@ -1687,7 +1610,7 @@ int bt_unicast_client_enable(struct bt_audio_stream *stream,
 	req = net_buf_simple_add(buf, sizeof(*req));
 	req->num_ases = 0x01;
 
-	err = unicast_client_ep_enable(ep, buf, meta, meta_count);
+	err = unicast_client_ep_enable(ep, buf, metadata, metadata_len);
 	if (err) {
 		return err;
 	}
@@ -1695,9 +1618,8 @@ int bt_unicast_client_enable(struct bt_audio_stream *stream,
 	return bt_unicast_client_ep_send(stream->conn, ep, buf);
 }
 
-int bt_unicast_client_metadata(struct bt_audio_stream *stream,
-			       struct bt_codec_data *meta,
-			       size_t meta_count)
+int bt_unicast_client_metadata(struct bt_audio_stream *stream, const struct bt_data *metadata,
+			       size_t metadata_len)
 {
 	struct bt_audio_ep *ep = stream->ep;
 	struct net_buf_simple *buf;
@@ -1711,7 +1633,7 @@ int bt_unicast_client_metadata(struct bt_audio_stream *stream,
 	req = net_buf_simple_add(buf, sizeof(*req));
 	req->num_ases = 0x01;
 
-	err = unicast_client_ep_metadata(ep, buf, meta, meta_count);
+	err = unicast_client_ep_metadata(ep, buf, metadata, metadata_len);
 	if (err) {
 		return err;
 	}

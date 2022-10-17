@@ -107,6 +107,7 @@ struct bt_audio_broadcast_source {
 	struct bt_iso_chan *bis[BROADCAST_STREAM_CNT];
 	struct bt_codec_qos *qos;
 	struct bt_codec *codec;
+	struct bt_audio_metadata *metadata;
 	/* The streams used to create the broadcast source */
 	sys_slist_t streams;
 };

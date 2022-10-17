@@ -244,6 +244,7 @@ static int bt_audio_broadcast_source_setup_stream(uint8_t index,
 static bool bt_audio_encode_base(const struct bt_audio_broadcast_source *source,
 				 struct net_buf_simple *buf)
 {
+	const struct bt_audio_metadata *metadata = source->metadata;
 	const struct bt_codec *codec = source->codec;
 	uint8_t bis_index;
 	uint8_t *start;
@@ -301,21 +302,21 @@ static bool bt_audio_encode_base(const struct bt_audio_broadcast_source *source,
 
 	/* Insert codec metadata in LTV format*/
 	start = net_buf_simple_add(buf, sizeof(len));
-	for (int i = 0; i < codec->meta_count; i++) {
-		const struct bt_data *metadata = &codec->meta[i].data;
+	for (int i = 0; i < metadata->count; i++) {
+		const struct bt_data *data = &metadata->data[i];
 
-		if ((buf->len + buf->size) < (sizeof(metadata->data_len) +
-					      sizeof(metadata->type) +
-					      metadata->data_len)) {
+		if ((buf->len + buf->size) < (sizeof(data->data_len) +
+					      sizeof(data->type) +
+					      data->data_len)) {
 			BT_DBG("No room for metadata[%d] with len %u",
-			       i, metadata->data_len);
+			       i, data->data_len);
 
 			return false;
 		}
 
-		net_buf_simple_add_u8(buf, metadata->data_len + sizeof(metadata->type));
-		net_buf_simple_add_u8(buf, metadata->type);
-		net_buf_simple_add_mem(buf, metadata->data, metadata->data_len);
+		net_buf_simple_add_u8(buf, data->data_len + sizeof(data->type));
+		net_buf_simple_add_u8(buf, data->type);
+		net_buf_simple_add_mem(buf, data->data, data->data_len);
 	}
 	/* Calculate length of codec config data */
 	len = net_buf_simple_tail(buf) - start - sizeof(len);
@@ -395,6 +396,7 @@ static void broadcast_source_cleanup(struct bt_audio_broadcast_source *source)
 int bt_audio_broadcast_source_create(struct bt_audio_stream *streams[],
 				     size_t num_stream,
 				     struct bt_codec *codec,
+				     struct bt_audio_metadata *metadata,
 				     struct bt_codec_qos *qos,
 				     struct bt_audio_broadcast_source **out_source)
 {
@@ -482,6 +484,7 @@ int bt_audio_broadcast_source_create(struct bt_audio_stream *streams[],
 
 	source->qos = qos;
 	source->codec = codec;
+	source->metadata = metadata;
 
 	BT_DBG("Broadcasting with ID 0x%6X", source->broadcast_id);
 

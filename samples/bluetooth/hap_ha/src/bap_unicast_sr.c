@@ -89,16 +89,6 @@ static void print_codec(const struct bt_codec *codec)
 		printk("  Frames per SDU: %d\n",
 		       bt_codec_cfg_get_frame_blocks_per_sdu(codec, true));
 	}
-
-	for (size_t i = 0; i < codec->meta_count; i++) {
-		printk("meta #%zu: type 0x%02x len %u\n",
-		       i, codec->meta[i].data.type,
-		       codec->meta[i].data.data_len);
-		print_hex(codec->meta[i].data.data,
-			  codec->meta[i].data.data_len -
-			  sizeof(codec->meta[i].data.type));
-		printk("\n");
-	}
 }
 
 static void print_qos(const struct bt_codec_qos *qos)
@@ -232,10 +222,9 @@ static int lc3_qos(struct bt_audio_stream *stream, const struct bt_codec_qos *qo
 	return 0;
 }
 
-static int lc3_enable(struct bt_audio_stream *stream, const struct bt_codec_data *meta,
-		      size_t meta_count)
+static int lc3_enable(struct bt_audio_stream *stream, const struct bt_audio_metadata *metadata)
 {
-	printk("Enable: stream %p meta_count %u\n", stream, meta_count);
+	printk("Enable: stream %p meta_count %u\n", stream, metadata->count);
 
 	return 0;
 }
@@ -306,15 +295,14 @@ static bool valid_metadata_type(uint8_t type, uint8_t len)
 	}
 }
 
-static int lc3_metadata(struct bt_audio_stream *stream, const struct bt_codec_data *meta,
-			size_t meta_count)
+static int lc3_metadata(struct bt_audio_stream *stream, const struct bt_audio_metadata *metadata)
 {
-	printk("Metadata: stream %p meta_count %u\n", stream, meta_count);
+	printk("Metadata: stream %p meta_count %u\n", stream, metadata->count);
 
-	for (size_t i = 0; i < meta_count; i++) {
-		if (!valid_metadata_type(meta->data.type, meta->data.data_len)) {
+	for (size_t i = 0; i < metadata->count; i++) {
+		if (!valid_metadata_type(metadata->data->type, metadata->data->data_len)) {
 			printk("Invalid metadata type %u or length %u\n",
-			       meta->data.type, meta->data.data_len);
+			       metadata->data->type, metadata->data->data_len);
 
 			return -EINVAL;
 		}

@@ -97,3 +97,28 @@ ssize_t bt_audio_ccc_cfg_write(struct bt_conn *conn, const struct bt_gatt_attr *
 
 	return sizeof(value);
 }
+
+int bt_audio_metadata_pack(uint8_t *data, uint8_t data_max_len, const struct bt_data *meta,
+			   size_t meta_len, uint8_t *data_len)
+{
+	uint8_t len = 0;
+
+	for (size_t i = 0; i < meta_len; i++) {
+		const struct bt_data *entry = &meta[i];
+
+		/* Check if ad fit in the remaining buffer */
+		if ((len + entry->data_len + 2) > data_max_len) {
+			return -ENOMEM;
+		}
+
+		data[len++] = entry->data_len + 1;
+		data[len++] = entry->type;
+
+		memcpy(&data[len], entry->data, entry->data_len);
+		len += entry->data_len;
+	}
+
+	*data_len = len;
+
+	return 0;
+}

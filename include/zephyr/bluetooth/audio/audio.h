@@ -201,9 +201,8 @@ struct bt_codec_data {
  *  @param _cid Company ID
  *  @param _vid Vendor ID
  *  @param _data Codec Specific Data in LVT format
- *  @param _meta Codec Specific Metadata in LVT format
  */
-#define BT_CODEC(_id, _cid, _vid, _data, _meta) \
+#define BT_CODEC(_id, _cid, _vid, _data) \
 	{ \
 		/* Use HCI data path as default, can be overwritten by application */ \
 		.path_id = BT_ISO_DATA_PATH_HCI, \
@@ -212,8 +211,6 @@ struct bt_codec_data {
 		.vid = _vid, \
 		.data_count = ARRAY_SIZE(((struct bt_codec_data[]) _data)), \
 		.data = _data, \
-		.meta_count = ARRAY_SIZE(((struct bt_codec_data[]) _meta)), \
-		.meta = _meta, \
 	}
 
 /** @brief Location values for BT Audio.
@@ -271,12 +268,6 @@ struct bt_codec {
 	/** Codec Specific Data */
 	struct bt_codec_data data[CONFIG_BT_CODEC_MAX_DATA_COUNT];
 #endif /* CONFIG_BT_CODEC_MAX_DATA_COUNT */
-#if defined(CONFIG_BT_CODEC_MAX_METADATA_COUNT)
-	/** Codec Specific Metadata count */
-	size_t   meta_count;
-	/** Codec Specific Metadata */
-	struct bt_codec_data meta[CONFIG_BT_CODEC_MAX_METADATA_COUNT];
-#endif /* CONFIG_BT_CODEC_MAX_METADATA_COUNT */
 };
 
 struct bt_audio_base_bis_data {
@@ -1423,14 +1414,11 @@ struct bt_audio_unicast_server_cb {
 	 *  be enabled to stream.
 	 *
 	 *  @param stream      Stream object being enabled.
-	 *  @param meta        Metadata entries
-	 *  @param meta_count  Number of metadata entries
+	 *  @param meta        Buffer containing metadata.
 	 *
 	 *  @return 0 in case of success or negative value in case of error.
 	 */
-	int (*enable)(struct bt_audio_stream *stream,
-		      const struct bt_codec_data *meta,
-		      size_t meta_count);
+	int (*enable)(struct bt_audio_stream *stream, struct net_buf_simple *meta);
 
 	/** @brief Stream Start request callback
 	 *
@@ -1449,14 +1437,11 @@ struct bt_audio_unicast_server_cb {
 	 *  update its metadata.
 	 *
 	 *  @param stream       Stream object.
-	 *  @param meta         Metadata entries
-	 *  @param meta_count   Number of metadata entries
+	 *  @param meta         Buffer containing metadata.
 	 *
 	 *  @return 0 in case of success or negative value in case of error.
 	 */
-	int (*metadata)(struct bt_audio_stream *stream,
-			const struct bt_codec_data *meta,
-			size_t meta_count);
+	int (*metadata)(struct bt_audio_stream *stream, struct net_buf_simple *meta);
 
 	/** @brief Stream Disable request callback
 	 *
@@ -1830,7 +1815,7 @@ int bt_audio_stream_qos(struct bt_conn *conn,
  *  @return 0 in case of success or negative value in case of error.
  */
 int bt_audio_stream_enable(struct bt_audio_stream *stream,
-			   struct bt_codec_data *meta,
+			   const struct bt_data *meta,
 			   size_t meta_count);
 
 /** @brief Change Audio Stream Metadata
@@ -1845,7 +1830,7 @@ int bt_audio_stream_enable(struct bt_audio_stream *stream,
  *  @return 0 in case of success or negative value in case of error.
  */
 int bt_audio_stream_metadata(struct bt_audio_stream *stream,
-			     struct bt_codec_data *meta,
+			     const struct bt_data *meta,
 			     size_t meta_count);
 
 /** @brief Disable Audio Stream
@@ -2028,6 +2013,8 @@ int bt_audio_unicast_group_delete(struct bt_audio_unicast_group *unicast_group);
  *                          broadcaster.
  *  @param[in]  num_stream  Number of streams in @p streams.
  *  @param[in]  codec       Codec configuration.
+ *  @param[in]  meta        Metadata entries
+ *  @param[in]  meta_count  Number of metadata entries
  *  @param[in]  qos         Quality of Service configuration
  *  @param[out] source      Pointer to the broadcast source created
  *
@@ -2036,6 +2023,8 @@ int bt_audio_unicast_group_delete(struct bt_audio_unicast_group *unicast_group);
 int bt_audio_broadcast_source_create(struct bt_audio_stream *streams[],
 				     size_t num_stream,
 				     struct bt_codec *codec,
+				     const struct bt_data *meta,
+				     size_t meta_count,
 				     struct bt_codec_qos *qos,
 				     struct bt_audio_broadcast_source **source);
 

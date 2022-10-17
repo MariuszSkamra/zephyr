@@ -21,6 +21,12 @@ struct bt_audio_capability {
 	/** Capability codec reference */
 	struct bt_codec *codec;
 
+	/** Audio metadata */
+	struct bt_data *meta;
+
+	/** Number of elements in metadata */
+	size_t meta_count;
+
 	/* Internally used list node */
 	sys_snode_t _node;
 };

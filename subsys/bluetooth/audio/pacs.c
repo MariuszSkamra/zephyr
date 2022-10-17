@@ -22,6 +22,7 @@
 #include <zephyr/bluetooth/audio/audio.h>
 #include <zephyr/bluetooth/audio/capabilities.h>
 #include "../host/conn_internal.h"
+#include "zephyr/net/buf.h"
 
 #define BT_DBG_ENABLED IS_ENABLED(CONFIG_BT_DEBUG_PACS)
 #define LOG_MODULE_NAME bt_pacs
@@ -54,20 +55,15 @@ static void pac_data_add(struct net_buf_simple *buf, uint8_t num,
 	}
 }
 
-struct build_pac_records_data {
-	struct net_buf_simple *buf;
-	uint8_t num_pac;
-};
-
 static bool build_pac_records(const struct bt_audio_capability *capability, void *user_data)
 {
-	struct build_pac_records_data *data = user_data;
+	struct net_buf_simple *buf = user_data;
+	struct bt_pacs_read_rsp *rsp = (void *)buf->data;
 	const struct bt_codec *codec = capability->codec;
-	struct net_buf_simple *buf = data->buf;
 	struct bt_pac_meta *meta;
 	struct bt_pac *pac;
 
-	pac = net_buf_simple_add(data->buf, sizeof(*pac));
+	pac = net_buf_simple_add(buf, sizeof(*pac));
 	pac->codec.id = codec->id;
 	pac->codec.cid = sys_cpu_to_le16(codec->cid);
 	pac->codec.vid = sys_cpu_to_le16(codec->vid);
@@ -77,20 +73,32 @@ static bool build_pac_records(const struct bt_audio_capability *capability, void
 	pac_data_add(buf, codec->data_count, codec->data);
 
 	/* Buffer size shall never be below PAC len since we are just append data.*/
-	__ASSERT_NO_MSG(data->buf->len >= pac->cc_len);
+	__ASSERT_NO_MSG(buf->len >= pac->cc_len);
 
 	pac->cc_len = buf->len - pac->cc_len;
 
 	meta = net_buf_simple_add(buf, sizeof(*meta));
-	meta->len = buf->len;
-	BT_DBG("Parsing metadata");
-	pac_data_add(buf, codec->meta_count, codec->meta);
-	meta->len = buf->len - meta->len;
+	meta->len = 0;
+
+	if (capability->metadata != NULL) {
+		ssize_t len;
+
+		len = bt_audio_metadata_pack(capability->metadata, meta->value,
+					     net_buf_simple_tailroom(buf));
+		if (len < 0) {
+			BT_ERR("Failed to append metadata");
+			return false;
+		}
+
+		net_buf_simple_add(buf, len);
+		meta->len = len;
+	}
+
 
 	BT_DBG("pac #%u: codec capability len %u metadata len %u",
-		data->num_pac, pac->cc_len, meta->len);
+		rsp->num_pac, pac->cc_len, meta->len);
 
-	data->num_pac++;
+	rsp->num_pac++;
 
 	return true;
 }
@@ -98,17 +106,15 @@ static bool build_pac_records(const struct bt_audio_capability *capability, void
 static void get_pac_records(struct bt_conn *conn, enum bt_audio_dir dir,
 			    struct net_buf_simple *buf)
 {
-	struct build_pac_records_data data;
 	struct bt_pacs_read_rsp *rsp;
 
 	/* Reset if buffer before using */
 	net_buf_simple_reset(buf);
 
 	rsp = net_buf_simple_add(buf, sizeof(*rsp));
+	rsp->num_pac = 0;
 
-	bt_audio_foreach_capability(dir, build_pac_records, &data);
-
-	rsp->num_pac = data.num_pac;
+	bt_audio_foreach_capability(dir, build_pac_records, buf);
 }
 
 static void available_context_cfg_changed(const struct bt_gatt_attr *attr, uint16_t value)
