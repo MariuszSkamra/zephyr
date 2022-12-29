@@ -24,11 +24,23 @@ BOARD="${BOARD:-nrf52_bsim}"
 
 cd ${BSIM_OUT_PATH}/bin
 
+# printf "\n\n======== Unicast Audio Group test =========\n\n"
+
+# Execute ./bs_${BOARD}_tests_bluetooth_bsim_bt_bsim_test_audio_prj_conf \
+#   -v=${VERBOSITY_LEVEL} -s=${SIMULATION_ID} -d=0 -testid=unicast_group -rs=23
+
+# # Simulation time should be larger than the WAIT_TIME in common.h
+# Execute ./bs_2G4_phy_v1 -v=${VERBOSITY_LEVEL} -s=${SIMULATION_ID} \
+#   -D=2 -sim_length=60e6 $@
+
+# for PROCESS_ID in $PROCESS_IDS; do
+#   wait $PROCESS_ID || let "EXIT_CODE=$?"
+# done
+
 printf "\n\n======== Unicast Audio test =========\n\n"
 
 Execute ./bs_${BOARD}_tests_bluetooth_bsim_bt_bsim_test_audio_prj_conf \
   -v=${VERBOSITY_LEVEL} -s=${SIMULATION_ID} -d=0 -testid=unicast_client -rs=23
-
 
 Execute ./bs_${BOARD}_tests_bluetooth_bsim_bt_bsim_test_audio_prj_conf \
   -v=${VERBOSITY_LEVEL} -s=${SIMULATION_ID} -d=1 -testid=unicast_server -rs=27

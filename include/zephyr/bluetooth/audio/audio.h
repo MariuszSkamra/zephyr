@@ -1951,18 +1951,14 @@ int bt_audio_stream_send(struct bt_audio_stream *stream, struct net_buf *buf,
  * bt_audio_unicast_group_add_streams() functions.
  */
 struct bt_audio_unicast_group_stream_param {
-	/** Pointer to a stream object. */
-	struct bt_audio_stream *stream;
+	/** Pointer to a input stream object. */
+	struct bt_audio_stream *in;
 
-	/** The QoS settings for the @ref bt_audio_unicast_group_stream_param.stream. */
+	/** Pointer to a output stream object. */
+	struct bt_audio_stream *out;
+
+	/** The QoS settings for the stream objects. */
 	struct bt_codec_qos *qos;
-
-	/** @brief The direction of the @ref bt_audio_unicast_group_stream_param.stream
-	 *
-	 * If two streams are being used for the same ACL connection but in
-	 * different directions, they may use the same CIS.
-	 */
-	enum bt_audio_dir dir;
 };
 
 struct bt_audio_unicast_group_param {

@@ -758,22 +758,34 @@ static int handle_metadata_update(const char *meta_str,
 }
 
 #if defined(CONFIG_BT_AUDIO_UNICAST_CLIENT)
-static uint8_t stream_dir(const struct bt_audio_stream *stream)
+static struct bt_audio_stream *stream_by_dir(enum bt_audio_dir dir)
 {
-	for (size_t i = 0; i < ARRAY_SIZE(snks); i++) {
-		if (snks[i] != NULL && stream->ep == snks[i]) {
-			return BT_AUDIO_DIR_SINK;
-		}
+	if (default_stream == NULL) {
+		return NULL;
 	}
 
-	for (size_t i = 0; i < ARRAY_SIZE(srcs); i++) {
-		if (srcs[i] != NULL && stream->ep == srcs[i]) {
-			return BT_AUDIO_DIR_SOURCE;
+	if (dir == BT_AUDIO_DIR_SINK) {
+		for (size_t i = 0; i < ARRAY_SIZE(snks); i++) {
+			if (snks[i] != NULL && default_stream->ep == snks[i]) {
+				return default_stream;
+			}
 		}
+
+		return NULL;
 	}
 
-	__ASSERT(false, "Invalid stream");
-	return 0;
+	if (dir == BT_AUDIO_DIR_SOURCE) {
+		for (size_t i = 0; i < ARRAY_SIZE(srcs); i++) {
+			if (srcs[i] != NULL && default_stream->ep == srcs[i]) {
+				return default_stream;
+			}
+		}
+
+		return NULL;
+	}
+
+	__ASSERT_PRINT("Invalid stream direction");
+	return NULL;
 }
 
 static void add_codec(struct bt_codec *codec, uint8_t index, enum bt_audio_dir dir)
@@ -1034,9 +1046,9 @@ static int cmd_qos(const struct shell *sh, size_t argc, char *argv[])
 
 	if (default_unicast_group == NULL) {
 		struct bt_audio_unicast_group_stream_param stream_param = {
-			.stream = default_stream,
+			.in = stream_by_dir(BT_AUDIO_DIR_SOURCE),
+			.out = stream_by_dir(BT_AUDIO_DIR_SINK),
 			.qos = &default_preset->preset.qos,
-			.dir = stream_dir(default_stream)
 		};
 		struct bt_audio_unicast_group_param param = {
 			.packing = BT_ISO_PACKING_SEQUENTIAL,

@@ -289,27 +289,27 @@ static int configure_stream(struct bt_audio_stream *stream,
 	return 0;
 }
 
-static size_t configure_streams(void)
+static void configure_streams(size_t stream_num)
 {
-	size_t stream_cnt;
+	printk("Configuring %zu %s\n",
+		stream_num, stream_num > 1 ? "streams" : "stream");
 
-	for (stream_cnt = 0; stream_cnt < ARRAY_SIZE(g_sinks); stream_cnt++) {
-		struct bt_audio_stream *stream = &g_streams[stream_cnt];
+	__ASSERT_NO_MSG(stream_num <= ARRAY_SIZE(g_sinks));
+
+	for (size_t i = 0; i < stream_num; i++) {
+		struct bt_audio_stream *stream = &g_streams[i];
 		int err;
 
-		if (g_sinks[stream_cnt] == NULL) {
+		if (g_sinks[i] == NULL) {
 			break;
 		}
 
-		err = configure_stream(stream, g_sinks[stream_cnt]);
+		err = configure_stream(stream, g_sinks[i]);
 		if (err != 0) {
-			FAIL("Unable to configure stream[%zu]: %d",
-			     stream_cnt, err);
-			return 0;
+			FAIL("Unable to configure stream[%zu]: %d", i, err);
+			return;
 		}
 	}
-
-	return stream_cnt;
 }
 
 static size_t release_streams(size_t stream_cnt)
@@ -341,48 +341,43 @@ static void create_unicast_group(struct bt_audio_unicast_group **unicast_group,
 {
 	struct bt_audio_unicast_group_stream_param stream_params[ARRAY_SIZE(g_streams)];
 	struct bt_audio_unicast_group_param param;
+	int err;
+
+	printk("Creating unicast group with %zu streams\n", stream_cnt);
 
 	for (size_t i = 0U; i < stream_cnt; i++) {
-		stream_params[i].stream = &g_streams[i];
+		stream_params[i].in = NULL;
+		stream_params[i].out = &g_streams[i];
 		stream_params[i].qos = &preset_16_2_1.qos;
-		stream_params[i].dir = BT_AUDIO_DIR_SINK; /* we only configure sinks */
 	}
 
 	param.params = stream_params;
 	param.params_count = stream_cnt;
 	param.packing = BT_ISO_PACKING_SEQUENTIAL;
 
-#if defined(CONFIG_BT_CTLR_CENTRAL_ISO)
-	int err;
-
 	/* Require controller support for CIGs */
-	printk("Creating unicast group\n");
 	err = bt_audio_unicast_group_create(&param, unicast_group);
 	if (err != 0) {
 		FAIL("Unable to create unicast group: %d", err);
-		return;
 	}
-#endif /* CONFIG_BT_CTLR_CENTRAL_ISO */
 }
 
 static void delete_unicast_group(struct bt_audio_unicast_group *unicast_group)
 {
-#if defined(CONFIG_BT_CTLR_CENTRAL_ISO)
 	int err;
-	/* Require controller support for CIGs */
+
+	printk("Deleting unicast group\n");
+
 	err = bt_audio_unicast_group_delete(unicast_group);
 	if (err != 0) {
 		FAIL("Unable to delete unicast group: %d", err);
-		return;
 	}
-#endif /* CONFIG_BT_CTLR_CENTRAL_ISO */
 }
 
 static void test_main(void)
 {
-	const unsigned int iterations = 3;
+	const size_t stream_cnt = CONFIG_BT_AUDIO_UNICAST_CLIENT_ASE_SNK_COUNT;
 	struct bt_audio_unicast_group *unicast_group;
-	size_t stream_cnt;
 
 	init();
 
@@ -392,30 +387,59 @@ static void test_main(void)
 
 	discover_sink();
 
+	if (IS_ENABLED(CONFIG_BT_CTLR_CENTRAL_ISO)) {
+		create_unicast_group(&unicast_group, stream_cnt);
+	}
+
 	/* Run the stream setup multiple time to ensure states are properly
 	 * set and reset
 	 */
-	for (unsigned int i = 0U; i < iterations; i++) {
-		printk("\n########### Running iteration #%u\n\n", i);
+	for (unsigned int i = 0U; i < stream_cnt; i++) {
+		const size_t stream_num = i + 1;
 
-		printk("Configuring streams\n");
-		stream_cnt = configure_streams();
-
-		printk("Creating unicast group\n");
-		create_unicast_group(&unicast_group, stream_cnt);
+		configure_streams(stream_num);
 
 		/* TODO: When babblesim supports ISO setup Audio streams */
 
-		release_streams(stream_cnt);
+		release_streams(stream_num);
+	}
 
-		/* Test removing streams from group after creation */
-		printk("Deleting unicast group\n");
+	if (IS_ENABLED(CONFIG_BT_CTLR_CENTRAL_ISO)) {
 		delete_unicast_group(unicast_group);
 		unicast_group = NULL;
 	}
 
-
 	PASS("Unicast client passed\n");
+}
+
+static void test_group(void)
+{
+	init();
+
+	if (IS_ENABLED(CONFIG_BT_CTLR_CENTRAL_ISO)) {
+		const size_t stream_cnt = CONFIG_BT_AUDIO_UNICAST_CLIENT_ASE_SNK_COUNT;
+		const unsigned int iterations = 3;
+		struct bt_audio_unicast_group *unicast_group;
+
+		/* Run the group setup multiple time to ensure states are properly
+		 * created and deleted
+		 */
+		for (unsigned int i = 0U; i < iterations; i++) {
+			printk("\n########### Running iteration #%u\n\n", i);
+
+			printk("Creating unicast group\n");
+			create_unicast_group(&unicast_group, stream_cnt);
+
+			printk("Deleting unicast group\n");
+			delete_unicast_group(unicast_group);
+
+			unicast_group = NULL;
+		}
+	} else {
+		printk("test skipped, CONFIG_BT_CTLR_CENTRAL_ISO not set\n");
+	}
+
+	PASS("Unicast group passed\n");
 }
 
 static const struct bst_test_instance test_unicast_client[] = {
@@ -424,6 +448,12 @@ static const struct bst_test_instance test_unicast_client[] = {
 		.test_post_init_f = test_init,
 		.test_tick_f = test_tick,
 		.test_main_f = test_main
+	},
+	{
+		.test_id = "unicast_group",
+		.test_post_init_f = test_init,
+		.test_tick_f = test_tick,
+		.test_main_f = test_group
 	},
 	BSTEST_END_MARKER
 };
