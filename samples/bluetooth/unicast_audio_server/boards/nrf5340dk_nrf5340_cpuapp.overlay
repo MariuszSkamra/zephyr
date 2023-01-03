@@ -1,0 +1,3 @@
+&clock {
+	hfclkaudio-frequency = <12288000>;
+};

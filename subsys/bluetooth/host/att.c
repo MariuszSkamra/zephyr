@@ -610,6 +610,8 @@ struct net_buf *bt_att_chan_create_pdu(struct bt_att_chan *chan, uint8_t op,
 	struct bt_att_tx_meta_data *data;
 	k_timeout_t timeout;
 
+	LOG_DBG("chan %p op %u size %zu", chan, op, len);
+
 	if (len + sizeof(op) > chan->chan.tx.mtu) {
 		LOG_WRN("ATT MTU exceeded, max %u, wanted %zu", chan->chan.tx.mtu,
 			len + sizeof(op));
@@ -632,12 +634,16 @@ struct net_buf *bt_att_chan_create_pdu(struct bt_att_chan *chan, uint8_t op,
 		return NULL;
 	}
 
+	LOG_DBG("buf %p allocated", buf);
+
 	data = tx_meta_data_alloc(timeout);
 	if (!data) {
 		LOG_WRN("Unable to allocate ATT TX meta");
 		net_buf_unref(buf);
 		return NULL;
 	}
+
+	LOG_DBG("data %p allocated", data);
 
 	bt_att_tx_meta_data(buf) = data;
 
